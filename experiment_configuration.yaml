@@ -1,0 +1,283 @@
+# Experiment configuration for:
+# Representation-Dependent Learning Behaviour in Machine Learning-Based
+# DDoS Intrusion Detection
+#
+# This configuration centralizes the documented experimental settings used
+# throughout the reproducibility repository.
+#
+# IMPORTANT:
+# - The primary experiment uses the controlled/fixed model configuration.
+# - Supplementary representation-specific optimization (B6) is handled
+#   separately and is not encoded here as the primary experiment.
+# - Dataset-specific file naming and feature mappings are handled by the
+#   data/ and feature_mapping/ resources and the representation/preprocessing
+#   modules.
+
+random_seed:
+  primary: 2026
+  repeated_runs:
+    - 2026
+    - 2027
+    - 2028
+    - 2029
+    - 2030
+    - 2031
+    - 2032
+    - 2033
+    - 2034
+    - 2035
+
+datasets:
+  - name: CIC-DDoS2019
+    key: CICDDoS2019
+  - name: CICIoT2023
+    key: CICIoT2023
+  - name: CIC-IoT-DIAD2024
+    key: DIAD2024
+
+representations:
+  - Flow
+  - Header
+  - Hybrid
+
+target_classes:
+  - Benign
+  - SYN_Flood
+  - UDP_Flood
+
+# Controlled representation-dependent experiment.
+experimental_design:
+  factors:
+    - Dataset
+    - Representation
+    - Architecture
+    - Run
+  split:
+    train: 0.70
+    validation: 0.10
+    test: 0.20
+  repeated_runs: 10
+  split_note: >
+    The repository assumes that the released train/validation/test
+    representation files already implement the study's leakage-resistant
+    partitioning protocol. Data-dependent preprocessing parameters must be
+    fitted on the training partition only and then applied unchanged to
+    validation and test partitions.
+
+classical_models:
+
+  logistic_regression:
+    name: Logistic Regression
+    preprocessing:
+      imputation: median
+      scaling: minmax
+    parameters:
+      penalty: l2
+      solver: lbfgs
+      max_iter: 1000
+
+  random_forest:
+    name: Random Forest
+    preprocessing:
+      imputation: median
+      scaling: none
+    parameters:
+      n_estimators: 200
+      max_depth: 20
+      criterion: gini
+      n_jobs: -1
+
+  xgboost:
+    name: XGBoost
+    preprocessing:
+      imputation: median
+      scaling: none
+    parameters:
+      n_estimators: 300
+      learning_rate: 0.05
+      max_depth: 10
+      subsample: 0.8
+      objective: multi:softprob
+      eval_metric: mlogloss
+      n_jobs: -1
+
+deep_learning:
+
+  common:
+    preprocessing:
+      imputation: median
+      scaling: minmax
+      dtype: float32
+    optimizer:
+      name: Adam
+      learning_rate: 0.001
+    loss: categorical_crossentropy
+    output_activation: softmax
+    batch_size: 128
+    epochs: 50
+    early_stopping:
+      enabled: true
+      monitor: val_loss
+      patience: 8
+      restore_best_weights: true
+
+  CNN:
+    name: 1D CNN
+    input_layout: samples_features_channels
+    channel_count: 1
+    architecture:
+      conv1d:
+        filters: 64
+        kernel_size: 3
+        activation: relu
+        padding: same
+      dropout: 0.3
+      global_pooling: GlobalMaxPooling1D
+
+  BiLSTM:
+    name: Bidirectional LSTM
+    input_layout: samples_features_channels
+    channel_count: 1
+    architecture:
+      first_bidirectional_lstm:
+        units: 128
+        dropout: 0.3
+        return_sequences: true
+      second_bidirectional_lstm:
+        units: 128
+        dropout: 0.3
+        return_sequences: false
+
+evaluation:
+  primary_metric: macro_f1
+  metrics:
+    - accuracy
+    - precision_macro
+    - recall_macro
+    - macro_f1
+    - weighted_f1
+    - balanced_accuracy
+    - matthews_correlation_coefficient
+    - brier_score
+    - expected_calibration_error
+
+  classification:
+    number_of_classes: 3
+    averaging:
+      precision: macro
+      recall: macro
+      f1_primary: macro
+      f1_secondary: weighted
+
+  brier_score:
+    type: multiclass
+    formula: >
+      BS = (1/N) * sum_i sum_c (p_ic - y_ic)^2
+
+  expected_calibration_error:
+    type: top_label
+    number_of_bins: 10
+    binning: equally_spaced
+    confidence: maximum_predicted_class_probability
+    correctness: predicted_label_equals_true_label
+    aggregation: sample_weighted_absolute_accuracy_confidence_gap
+
+reliability_diagram:
+  enabled: true
+  confidence_bins: 10
+  x_axis: Mean predicted confidence
+  y_axis: Empirical accuracy
+  reference_line: y_equals_x
+  primary_manuscript_figure:
+    dataset: CIC-DDoS2019
+    representations:
+      - Flow
+      - Header
+    architectures:
+      - LR
+      - RF
+      - XGB
+      - CNN
+      - BiLSTM
+
+rsi:
+  name: Representation Stability Index
+  interpretation: descriptive_dispersion_measure
+  categorical_thresholds: null
+  note: >
+    RSI is treated as a domain-specific descriptive dispersion measure.
+    No predefined categorical stability thresholds are used.
+
+representation_definitions:
+  Flow:
+    source: feature_mapping
+    note: >
+      Flow-level representation based on the documented flow feature
+      mapping for each benchmark dataset.
+
+  Header:
+    source: feature_mapping
+    note: >
+      Header-level representation based on the documented header feature
+      mapping for each benchmark dataset.
+
+  Hybrid:
+    composition:
+      - Header
+      - Flow
+    note: >
+      Hybrid representation combines the documented Header and Flow
+      feature groups.
+
+preprocessing:
+  feature_handling:
+    numeric_conversion: true
+    replace_infinite_with_nan: true
+  label_columns:
+    known:
+      - _class
+      - Label
+      - label
+  metadata_columns:
+    excluded_from_predictors:
+      - _source_file
+  fitting_rule: training_partition_only
+  application_rule: validation_and_test_use_training_parameters
+
+data_release:
+  original_benchmark_datasets_redistributed: false
+  processed_representation_files: true
+  partitions:
+    - train
+    - validation
+    - test
+  representations:
+    - Flow
+    - Header
+    - Hybrid
+  reproducibility_materials:
+    - feature_mappings
+    - partition_assignments
+    - random_seeds
+    - preprocessing_configuration
+    - model_configuration
+    - evaluation_code
+    - calibration_code
+    - analysis_code
+
+supplementary:
+  B6_representation_specific_optimization:
+    included_in_primary_configuration: false
+    note: >
+      Representation-specific hyperparameter optimization is treated as
+      supplementary sensitivity/optimization analysis rather than as the
+      controlled primary experiment.
+
+provenance:
+  status: reconstructed_reproducibility_configuration
+  note: >
+    This configuration consolidates the experimental settings established
+    from the manuscript and the available study source code. It is intended
+    to provide a transparent, centralized configuration for the
+    reproducibility repository. Development-stage notebooks, exploratory
+    scripts, and intermediate files are not represented here.
